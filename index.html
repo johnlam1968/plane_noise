@@ -1,1 +1,167 @@
-pass
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Airborne Plane Tracker</title>
+    <style>
+        body { font-family: monospace; white-space: pre; background-color: #1e1e1e; color: #d4d4d4; }
+        h1 { font-size: 1.2em; }
+        .error { color: red; }
+        .noisy { color: yellow; }
+    </style>
+</head>
+<body>
+    <h1>Local Air Traffic Monitor</h1>
+    <p id="status">Waiting for location access...</p>
+    <pre id="output"></pre>
+
+    <script>
+        // Configuration and Constants
+        const BASE_URL = 'https://api.airplanes.live/v2/point/';
+        const _radius = 5; // nautical miles
+        const _distance_threshold = 7000; // feet
+        const NM_TO_FEET = 6076.115;
+        const UPDATE_INTERVAL_MS = 1010; // 1.01 seconds
+
+        let userLatitude = null;
+        let userLongitude = null;
+        let updateTimer = null;
+        const statusElement = document.getElementById('status');
+        const outputElement = document.getElementById('output');
+
+        // --- Core Data Processing Function ---
+        async function fetchAndProcessPlanes() {
+            if (userLatitude === null || userLongitude === null) {
+                outputElement.textContent = "Location not yet determined.";
+                return;
+            }
+
+            const url = `${BASE_URL}${userLatitude.toFixed(3)}/${userLongitude.toFixed(3)}/${_radius}`;
+            
+            statusElement.textContent = `Tracking location: Lat ${userLatitude.toFixed(3)}, Lon ${userLongitude.toFixed(3)}`;
+
+            try {
+                const response = await fetch(url);
+                if (!response.ok) {
+                    throw new Error(`HTTP error! status: ${response.status}`);
+                }
+                const data = await response.json();
+                
+                const aircraftList = data.ac || [];
+                const totalFound = data.total || 0;
+
+                if (aircraftList.length === 0) {
+                    outputElement.innerHTML = `Total found ${totalFound}\nCould not find planes`;
+                    return;
+                }
+
+                // --- Filtering and Processing ---
+                
+                let air_borne = aircraftList
+                    .filter(ac => {
+                        // 1. Filter out ground planes and check for required data
+                        return ac.alt_baro !== 'ground' && 
+                                ac.alt_baro != null && 
+                                ac.dst != null && 
+                                ac.gs != null;
+                    })
+                    .map(ac => {
+                        // 2. Convert necessary string values to number (float)
+                        const alt_ft = parseFloat(ac.alt_baro);
+                        const dst_nm = parseFloat(ac.dst);
+                        const gs_val = parseFloat(ac.gs);
+
+                        // Check if conversions resulted in valid numbers
+                        if (isNaN(alt_ft) || isNaN(dst_nm) || isNaN(gs_val)) {
+                            return null; // Mark for later removal
+                        }
+
+                        // 3. Apply altitude mask (3500 ft > alt > 0 ft)
+                        if (alt_ft <= 0 || alt_ft >= 3500) {
+                            return null;
+                        }
+
+                        // 4. Calculate 'distance' (hypotenuse calculation)
+                        const horizontal_dist_ft = dst_nm * NM_TO_FEET;
+                        const distance_ft = Math.sqrt(horizontal_dist_ft ** 2 + alt_ft ** 2);
+                        
+                        // Store the final, filtered, and calculated data
+                        return {
+                            alt_baro: alt_ft,
+                            gs: gs_val,
+                            dst_nm: dst_nm,
+                            distance: distance_ft
+                        };
+                    })
+                    .filter(p => p !== null); // Remove any planes that returned null (invalid/out-of-range)
+
+                // --- Display Results ---
+                let output = `Total found ${totalFound}\n`;
+                output += "Airborne planes (0-3500 ft):\n";
+                output += "ALT_FT | GS | DST_NM | DISTANCE_FT\n";
+                output += "---------------------------------------\n";
+
+                for (const p of air_borne) {
+                    output += `${p.alt_baro.toFixed(0).padEnd(6)} | ${p.gs.toFixed(0).padEnd(2)} | ${p.dst_nm.toFixed(2).padEnd(6)} | ${p.distance.toFixed(2).padEnd(11)}\n`;
+                }
+
+                output += "\nNoisy planes (< 7000 ft total distance):\n";
+                
+                // Apply the distance threshold filter
+                const noisyPlanes = air_borne.filter(p => p.distance < _distance_threshold);
+
+                if (noisyPlanes.length > 0) {
+                    output += "ALT_FT | GS | DST_NM | DISTANCE_FT\n";
+                    output += "---------------------------------------\n";
+                    for (const p of noisyPlanes) {
+                        output += `<span class="noisy">${p.alt_baro.toFixed(0).padEnd(6)} | ${p.gs.toFixed(0).padEnd(2)} | ${p.dst_nm.toFixed(2).padEnd(6)} | ${p.distance.toFixed(2).padEnd(11)}</span>\n`;
+                    }
+                } else {
+                    output += "None\n";
+                }
+                
+                output += "---------------------------------------";
+                outputElement.innerHTML = output;
+
+            } catch (e) {
+                outputElement.innerHTML = `<span class="error">Request error: ${e.message}</span>`;
+            }
+        }
+
+        // --- Geolocation Functions ---
+        function startTracking(position) {
+            userLatitude = position.coords.latitude;
+            userLongitude = position.coords.longitude;
+            
+            // Initial run
+            fetchAndProcessPlanes(); 
+            
+            // Set up the automatic update loop
+            if (updateTimer === null) {
+                 updateTimer = setInterval(fetchAndProcessPlanes, UPDATE_INTERVAL_MS);
+            }
+        }
+
+        function locationError(error) {
+            statusElement.textContent = `Location Error: ${error.message}. Cannot track planes.`;
+            clearInterval(updateTimer);
+        }
+
+        function getInitialLocation() {
+            if (navigator.geolocation) {
+                navigator.geolocation.getCurrentPosition(startTracking, locationError, {
+                    enableHighAccuracy: true,
+                    timeout: 15000,
+                    maximumAge: 0
+                });
+            } else {
+                statusElement.textContent = "Geolocation is not supported by your browser.";
+            }
+        }
+
+        // --- Start the application ---
+        getInitialLocation();
+    </script>
+</body>
+</html>
