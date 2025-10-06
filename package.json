@@ -7,10 +7,6 @@
     "start": "vercel dev"
   },
   "dependencies": {
-    "node-fetch": "2.6.7"  // You can use a specific version like this
-    // or simply use the latest version with: "node-fetch": "^3.0.0" 
-  },
-  "devDependencies": {
-    // ... other development-only tools
+    "node-fetch": "2.6.7"
   }
 }
