@@ -1,0 +1,37 @@
+import Shortcuts
+
+#Metadata
+#Color: Teal
+#Icon: airplane
+
+let BASE_URL = "https://api.airplanes.live/v2/point/"
+let _radius = 5
+let NM_TO_FEET = 6076.115
+
+# Get the user's location (this would come from a "Get Current Location" action)
+getClipboard() >> location_data
+
+# Construct the URL with location from the shortcut input
+# You would need to parse the lat/lon from location_data
+let lat = getDictionaryValue(input: location_data, key: "Latitude")
+let lon = getDictionaryValue(input: location_data, key: "Longitude")
+
+# Format the URL string using a Jellycuts-supported method
+let url = "{BASE_URL}{lat:.3f}/{lon:.3f}/{_radius}"
+
+# Make the API request and store the JSON response
+downloadURL(url: url) >> response
+getDictionary(input: response) >> data
+
+# Process the data (example)
+let ac_list = getDictionaryValue(input: data, key: "ac")
+# ... further processing would involve repeats and conditionals
+
+# Create the final result dictionary
+let result_dict = Dictionary(
+  noise_signal: 0,
+  noisy_planes_count: 0
+)
+
+# Show the final dictionary in the Shortcut's result
+showResult(result_dict)

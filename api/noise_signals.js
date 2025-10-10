@@ -45,7 +45,7 @@ module.exports = async (req, res) => {
             noise_signal: noisyPlanes.length > 0 ? 1 : 0, // Your core signal (1 or 0)
             noisy_planes_count: noisyPlanes.length,
             total_planes_airborne: air_borne.length,
-            total_planes_found: aircraftList.length,
+            total_planes_found: aircraftList.length,a
         });
 
     } catch (e) {
